@@ -1410,7 +1410,14 @@ export class Node<NodeType extends ts.Node = ts.Node> {
   /** @internal */
   replaceWithText(textOrWriterFunction: string | WriterFunction, writer: CodeBlockWriter): Node;
   replaceWithText(textOrWriterFunction: string | WriterFunction, writer?: CodeBlockWriter): Node {
-    const newText = getTextFromStringOrWriter(writer || this._getWriterWithQueuedIndentation(), textOrWriterFunction);
+    if (writer == null) {
+      writer = this._getWriterWithQueuedIndentation();
+      // The enclosing template's opening backtick is not part of these fragments.
+      // Avoid adding parent indentation to literal text the writer cannot recognize.
+      if (Node.isTemplateSpan(this) || Node.isTemplateMiddle(this) || Node.isTemplateTail(this))
+        writer.queueIndentationLevel(0);
+    }
+    const newText = getTextFromStringOrWriter(writer, textOrWriterFunction);
     if (Node.isSourceFile(this)) {
       this.replaceText([this.getPos(), this.getEnd()], newText);
       return this;

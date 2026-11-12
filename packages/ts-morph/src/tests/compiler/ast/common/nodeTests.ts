@@ -1193,6 +1193,50 @@ class MyClass {
       doTest("var t = Some.Prop.Access.Expression;", writer => writer.write("NewText"), "var t = NewText;");
     });
 
+    for (
+      const [kind, text] of [
+        [SyntaxKind.TemplateSpan, "1}\nnew middle ${"],
+        [SyntaxKind.TemplateMiddle, "}\nnew middle ${"],
+        [SyntaxKind.TemplateTail, "}\nnew tail`"],
+      ] as const
+    ) {
+      for (const useWriter of [false, true]) {
+        it(`should not indent literal text when replacing ${SyntaxKind[kind]} with ${useWriter ? "a writer" : "a string"}`, () => {
+          const { sourceFile } = getInfoFromText("function f() {\n    return `first ${1}\nmiddle ${2}\ntail`;\n}");
+          const node = sourceFile.getFirstDescendantByKindOrThrow(kind);
+          const result = node.replaceWithText(useWriter ? writer => writer.write(text) : text);
+          expect(result.getText()).to.equal(text);
+        });
+      }
+    }
+
+    it("should allow explicit block indentation when replacing a template span", () => {
+      const { sourceFile } = getInfoFromText("function f() {\n    return `first ${1}\nlast ${2}`;\n}");
+      const node = sourceFile.getFirstDescendantByKindOrThrow(SyntaxKind.TemplateSpan);
+      const result = node.replaceWithText(writer => writer.write("(() => ").block(() => writer.writeLine("return 7;")).write(")()}\nlast ${"));
+      expect(result.getText()).to.equal("(() => {\n    return 7;\n}\n)()}\nlast ${");
+    });
+
+    it("should preserve literal text when replacing a complete template", () => {
+      const { sourceFile } = getInfoFromText("function f() {\n    return `first ${1}\nlast ${2}`;\n}");
+      const text = "`first\nnew ${1}\nlast`";
+      const result = sourceFile.getFirstDescendantByKindOrThrow(SyntaxKind.TemplateExpression).replaceWithText(text);
+      expect(result.getText()).to.equal(text);
+    });
+
+    it("should retain queued indentation when replacing an ordinary expression", () => {
+      const { sourceFile } = getInfoFromText("function f() {\n    call();\n}");
+      const result = sourceFile.getFirstDescendantByKindOrThrow(SyntaxKind.CallExpression).replaceWithText("call({\nvalue: 1\n})");
+      expect(result.getText()).to.equal("call({\n    value: 1\n    })");
+    });
+
+    it("should honor an explicit writer when replacing a template fragment", () => {
+      const { sourceFile } = getInfoFromText("function f() {\n    return `first ${1}\nmiddle ${2}`;\n}");
+      const writer = new CodeBlockWriter().queueIndentationLevel(1);
+      const result = sourceFile.getFirstDescendantByKindOrThrow(SyntaxKind.TemplateMiddle).replaceWithText("}\nnew ${", writer);
+      expect(result.getText()).to.equal("}\n    new ${");
+    });
+
     it("should replace the text for a source file", () => {
       const { sourceFile } = getInfoFromText("var t = Some.Prop.Access;");
       const result = sourceFile.replaceWithText("var t;");
